@@ -61,17 +61,14 @@ public class BKRemotePeripheral: BKRemotePeer, BKCBPeripheralDelegate {
         - Disconnecting: The peripheral is currently disconnecting.
     */
     public enum State {
-        case shallow, disconnected, connecting, connected, disconnecting
+        case disconnected, connecting, connected, disconnecting
     }
 
     // MARK: Properties
 
     /// The current state of the remote peripheral, either shallow or derived from an underlying CBPeripheral object.
     public var state: State {
-        if peripheral == nil {
-            return .shallow
-        }
-        switch peripheral!.state {
+        switch peripheral.state {
         case .disconnected:
             return .disconnected
         case .connecting:
@@ -81,21 +78,20 @@ public class BKRemotePeripheral: BKRemotePeer, BKCBPeripheralDelegate {
         case .disconnecting:
             return .disconnecting
         @unknown default:
-            return .shallow
-
+            return .disconnected
         }
     }
 
     /// The name of the remote peripheral, derived from an underlying CBPeripheral object.
     public var name: String? {
-        return peripheral?.name
+        return peripheral.name
     }
 
     /// The remote peripheral's delegate.
     public weak var peripheralDelegate: BKRemotePeripheralDelegate?
 
     override internal var maximumUpdateValueLength: Int {
-        guard #available(iOS 9, *), let peripheral = peripheral else {
+        guard #available(iOS 9, *) else {
             return super.maximumUpdateValueLength
         }
         #if os(OSX)
@@ -106,42 +102,42 @@ public class BKRemotePeripheral: BKRemotePeer, BKCBPeripheralDelegate {
     }
 
     internal var characteristicData: CBCharacteristic?
-    internal var peripheral: CBPeripheral?
+    internal let peripheral: CBPeripheral
 
     private var peripheralDelegateProxy: BKCBPeripheralDelegateProxy!
 
     // MARK: Initialization
 
-    public init(identifier: UUID, peripheral: CBPeripheral?) {
+    public init(identifier: UUID, peripheral: CBPeripheral) {
+        self.peripheral = peripheral
         super.init(identifier: identifier)
         self.peripheralDelegateProxy = BKCBPeripheralDelegateProxy(delegate: self)
-        self.peripheral = peripheral
     }
 
     // MARK: Internal Functions
 
     internal func prepareForConnection() {
-        peripheral?.delegate = peripheralDelegateProxy
+        peripheral.delegate = peripheralDelegateProxy
     }
 
     internal func discoverServices() {
-        if peripheral?.services != nil {
-            peripheral(peripheral!, didDiscoverServices: nil)
+        if peripheral.services != nil {
+            peripheral(peripheral, didDiscoverServices: nil)
             return
         }
-        peripheral?.discoverServices(configuration!.serviceUUIDs)
+        peripheral.discoverServices(configuration!.serviceUUIDs)
     }
 
     internal func unsubscribe() {
-        guard peripheral?.services != nil else {
+        guard let services = peripheral.services else {
             return
         }
-        for service in peripheral!.services! {
-            guard service.characteristics != nil else {
+        for service in services {
+            guard let characteristics = service.characteristics else {
                 continue
             }
-            for characteristic in service.characteristics! {
-                peripheral?.setNotifyValue(false, for: characteristic)
+            for characteristic in characteristics {
+                peripheral.setNotifyValue(false, for: characteristic)
             }
         }
     }
@@ -149,7 +145,7 @@ public class BKRemotePeripheral: BKRemotePeer, BKCBPeripheralDelegate {
     // MARK: BKCBPeripheralDelegate
 
     internal func peripheralDidUpdateName(_ peripheral: CBPeripheral) {
-        peripheralDelegate?.remotePeripheral(self, didUpdateName: name!)
+        peripheralDelegate?.remotePeripheral(self, didUpdateName: name ?? "")
     }
 
     internal func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
@@ -175,10 +171,11 @@ public class BKRemotePeripheral: BKRemotePeer, BKCBPeripheralDelegate {
     }
 
     internal func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        guard characteristic.uuid == configuration!.dataServiceCharacteristicUUID else {
+        guard characteristic.uuid == configuration!.dataServiceCharacteristicUUID,
+              let value = characteristic.value else {
             return
         }
-        handleReceivedData(characteristic.value!)
+        handleReceivedData(value)
     }
 
 }

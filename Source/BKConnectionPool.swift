@@ -37,7 +37,6 @@ internal class BKConnectionPool: BKCBCentralManagerConnectionDelegate {
         case noCentralManagerSet
         case alreadyConnected
         case alreadyConnecting
-        case connectionByUUIDIsNotImplementedYet
         case interrupted
         case noConnectionAttemptForRemotePeripheral
         case noConnectionForRemotePeripheral
@@ -61,16 +60,13 @@ internal class BKConnectionPool: BKCBCentralManagerConnectionDelegate {
         guard !connectedRemotePeripherals.contains(remotePeripheral) else {
             throw BKError.alreadyConnected
         }
-        guard !connectionAttempts.map({ connectionAttempt in return connectionAttempt.remotePeripheral }).contains(remotePeripheral) else {
+        guard !connectionAttempts.map({ $0.remotePeripheral }).contains(remotePeripheral) else {
             throw BKError.alreadyConnecting
-        }
-        guard remotePeripheral.peripheral != nil else {
-            throw BKError.connectionByUUIDIsNotImplementedYet
         }
         let timer = Timer.scheduledTimer(timeInterval: timeout, target: self, selector: #selector(BKConnectionPool.timerElapsed(_:)), userInfo: nil, repeats: false)
         remotePeripheral.prepareForConnection()
         connectionAttempts.append(BKConnectionAttempt(remotePeripheral: remotePeripheral, timer: timer, completionHandler: completionHandler))
-        centralManager!.connect(remotePeripheral.peripheral!, options: nil)
+        centralManager.connect(remotePeripheral.peripheral, options: nil)
     }
 
     internal func interruptConnectionAttemptForRemotePeripheral(_ remotePeripheral: BKRemotePeripheral) throws {
@@ -85,7 +81,7 @@ internal class BKConnectionPool: BKCBCentralManagerConnectionDelegate {
         // Check if the peripheral is already connected
         if let connectedPeripheral = connectedRemotePeripherals.filter({ $0 == remotePeripheral }).last {
             connectedPeripheral.unsubscribe()
-            centralManager.cancelPeripheralConnection(connectedPeripheral.peripheral!)
+            centralManager.cancelPeripheralConnection(connectedPeripheral.peripheral)
             return
         }
         
@@ -133,17 +129,15 @@ internal class BKConnectionPool: BKCBCentralManagerConnectionDelegate {
     }
 
     private func failConnectionAttempt(_ connectionAttempt: BKConnectionAttempt, error: BKError) {
-        connectionAttempts.remove(at: connectionAttempts.firstIndex(of: connectionAttempt)!)
+        connectionAttempts.removeAll { $0 == connectionAttempt }
         connectionAttempt.timer.invalidate()
-        if let peripheral = connectionAttempt.remotePeripheral.peripheral {
-            centralManager.cancelPeripheralConnection(peripheral)
-        }
+        centralManager.cancelPeripheralConnection(connectionAttempt.remotePeripheral.peripheral)
         connectionAttempt.completionHandler(connectionAttempt.remotePeripheral, error)
     }
 
     private func succeedConnectionAttempt(_ connectionAttempt: BKConnectionAttempt) {
         connectionAttempt.timer.invalidate()
-        connectionAttempts.remove(at: connectionAttempts.firstIndex(of: connectionAttempt)!)
+        connectionAttempts.removeAll { $0 == connectionAttempt }
         connectedRemotePeripherals.append(connectionAttempt.remotePeripheral)
         connectionAttempt.remotePeripheral.discoverServices()
         connectionAttempt.completionHandler(connectionAttempt.remotePeripheral, nil)
@@ -168,8 +162,8 @@ internal class BKConnectionPool: BKCBCentralManagerConnectionDelegate {
     }
 
     internal func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        if let remotePeripheral = connectedRemotePeripherals.filter({ $0.peripheral == peripheral }).last {
-            connectedRemotePeripherals.remove(at: connectedRemotePeripherals.firstIndex(of: remotePeripheral)!)
+        if let index = connectedRemotePeripherals.firstIndex(where: { $0.peripheral == peripheral }) {
+            let remotePeripheral = connectedRemotePeripherals.remove(at: index)
             delegate?.connectionPool(self, remotePeripheralDidDisconnect: remotePeripheral)
         }
     }
