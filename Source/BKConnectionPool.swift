@@ -82,12 +82,25 @@ internal class BKConnectionPool: BKCBCentralManagerConnectionDelegate {
     }
 
     internal func disconnectRemotePeripheral(_ remotePeripheral: BKRemotePeripheral) throws {
-        let connectedRemotePeripheral = connectedRemotePeripherals.filter({ $0 == remotePeripheral }).last
-        guard connectedRemotePeripheral != nil else {
-            throw BKError.noConnectionForRemotePeripheral
+        // Check if the peripheral is already connected
+        if let connectedPeripheral = connectedRemotePeripherals.filter({ $0 == remotePeripheral }).last {
+            connectedPeripheral.unsubscribe()
+            centralManager.cancelPeripheralConnection(connectedPeripheral.peripheral!)
+            return
         }
-        connectedRemotePeripheral?.unsubscribe()
-        centralManager.cancelPeripheralConnection(connectedRemotePeripheral!.peripheral!)
+        
+        // Check if the peripheral is in the process of connecting
+        if let connectionAttempt = connectionAttemptForRemotePeripheral(remotePeripheral) {
+            failConnectionAttempt(connectionAttempt, error: .interrupted)
+            return
+        }
+        
+        // If we get here, the peripheral is neither connected nor connecting
+        throw BKError.noConnectionForRemotePeripheral
+    }
+    
+    internal func isPeripheralConnecting(_ remotePeripheral: BKRemotePeripheral) -> Bool {
+        return connectionAttempts.contains { $0.remotePeripheral == remotePeripheral }
     }
 
     internal func reset() {
