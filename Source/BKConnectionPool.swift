@@ -95,10 +95,6 @@ internal class BKConnectionPool: BKCBCentralManagerConnectionDelegate {
         throw BKError.noConnectionForRemotePeripheral
     }
     
-    internal func isPeripheralConnecting(_ remotePeripheral: BKRemotePeripheral) -> Bool {
-        return connectionAttempts.contains { $0.remotePeripheral == remotePeripheral }
-    }
-
     internal func reset() {
         for connectionAttempt in connectionAttempts {
             failConnectionAttempt(connectionAttempt, error: .interrupted)
